@@ -86,13 +86,6 @@ public class Homele1 {
                     }
                     System.out.println("=================================");
 
-                    WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(5)); // 10 saniye bekleme süresi
-                    WebElement agentNameElement = wait.until(ExpectedConditions.elementToBeClickable(By.className("agent-name")));
-                    agentNameElement.click();
-
-                    //müşteri temsilcisi Detayları yazdırma
-                    WebElement agentDetails = wait.until(ExpectedConditions.visibilityOfElementLocated(By.className("agency-detail")));
-                    System.out.println("Agent Detayları: " + agentDetails.getText());
 
                 } catch (Exception e) {
                     System.out.println("Bilgiler alınamadı: " + e.getMessage());
