@@ -5,10 +5,16 @@ import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.support.ui.ExpectedConditions;
+import org.openqa.selenium.support.ui.WebDriverWait;
 
+
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
+import java.time.Duration;
+
 
 public class Homele1 {
     public static void main(String[] args) throws InterruptedException {
@@ -22,6 +28,8 @@ public class Homele1 {
         int pageNumber = 1;
 
         boolean hasNextPage = true;
+
+        List<Map<String, Object>> allProperties = new ArrayList<>();
 
         while (hasNextPage) {
             String url = baseUrl + pageNumber;
@@ -49,9 +57,7 @@ public class Homele1 {
                 try {
 
                     WebElement titleElement = driver.findElement(By.cssSelector(".title.fs-5.fw-bold"));
-
                     String ilanTitle = titleElement.getText().trim();
-
                     ilanDetaylari.put("ilan başlığı :", ilanTitle);
 
                     List<WebElement> listItems = driver.findElements(By.xpath("//li[contains(@class, 'list-group-item')]"));
@@ -74,31 +80,19 @@ public class Homele1 {
                         }
                     }
 
-                    /*//müşteri temsilcisi kısmı
-                    List<WebElement> widgetItems = driver.findElements(By.className("widget"));
-
-                    if (!widgetItems.isEmpty()) {
-                        for (WebElement widget : widgetItems) {
-                            String widgetText = widget.getText().trim();
-                            ilanDetaylari.put("Widget Info", widgetText);
-                        }
-                    }*/
-
-                    /*List<WebElement> agentsNames = driver.findElements(By.className("agent-name\n"));
-                    if (!agentsNames.isEmpty()) {
-                        for (WebElement agent : agentsNames) {
-                            String agentText = agent.getText().trim();
-                            ilanDetaylari.put("Agent İnfo",agentText);
-                        }
-                    }*/
-
-
-
                     System.out.println("İlan Detayları:");
                     for (Map.Entry<String, String> entry : ilanDetaylari.entrySet()) {
                         System.out.println(entry.getKey() + ": " + entry.getValue());
                     }
                     System.out.println("=================================");
+
+                    WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(5)); // 10 saniye bekleme süresi
+                    WebElement agentNameElement = wait.until(ExpectedConditions.elementToBeClickable(By.className("agent-name")));
+                    agentNameElement.click();
+
+                    //müşteri temsilcisi Detayları yazdırma
+                    WebElement agentDetails = wait.until(ExpectedConditions.visibilityOfElementLocated(By.className("agency-detail")));
+                    System.out.println("Agent Detayları: " + agentDetails.getText());
 
                 } catch (Exception e) {
                     System.out.println("Bilgiler alınamadı: " + e.getMessage());

@@ -41,8 +41,15 @@
             <scope>test</scope>
         </dependency>
 
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+            <version>2.11.0</version>
+        </dependency>
 
-            <!-- Gson for JSON serialization -->
+
+
+        <!-- Gson for JSON serialization -->
         <dependency>
         <groupId>com.google.code.gson</groupId>
         <artifactId>gson</artifactId>
