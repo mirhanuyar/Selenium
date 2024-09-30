@@ -1,5 +1,6 @@
 package homele;
 
+import com.google.gson.Gson;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
@@ -7,8 +8,11 @@ import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
@@ -16,24 +20,25 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.HashMap;
 import java.util.Set;
+import java.util.HashSet;
 
 public class Homele1 {
+    private static final Logger log = LoggerFactory.getLogger(Homele2.class);
+
     public static void main(String[] args) throws InterruptedException {
+
         WebDriver driver = new ChromeDriver();
-        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(40));
+        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(50));
 
         driver.manage().window().maximize();
         String baseUrl = "https://homele.com/tr/properties?page=";
 
         int pageNumber = 1;
         boolean hasNextPage = true;
-        List<Map<String, Object>> allProperties = new ArrayList<>();
 
         while (hasNextPage) {
             String url = baseUrl + pageNumber;
@@ -59,16 +64,77 @@ public class Homele1 {
                     String ilanTitle = titleElement.getText().trim();
                     ilanDetaylari.put("ilan başlığı:", ilanTitle);
 
+                    String ilanId = ilanUrl.substring(ilanUrl.lastIndexOf('/') + 1);
+                    System.out.println("Ilan ID: " + ilanId);
+
+                    WebElement agencyScriptElement = driver.findElement(By.xpath("//script[contains(text(), 'agency_id')]"));
+                    String scriptContent = agencyScriptElement.getAttribute("innerHTML");
+
+                    String agencyId = scriptContent.split("'agency_id': '")[1].split("'")[0];
+                    System.out.println("Agency ID: " + agencyId);
+
+                    WebElement agentScriptElement = driver.findElement(By.xpath("//script[contains(text(), 'agent_id')]"));
+                    String agentScriptContent = agentScriptElement.getAttribute("innerHTML");
+
+                    String agentId = agentScriptContent.split("'agent_id': '")[1].split("'")[0];
+                    System.out.println("Agent ID: " + agentId);
+
                     List<WebElement> listItems = driver.findElements(By.xpath("//li[contains(@class, 'list-group-item')]"));
+
                     for (WebElement listItem : listItems) {
                         String key = listItem.findElements(By.tagName("span")).get(0).getText().trim();
                         String value = listItem.findElements(By.tagName("span")).get(1).getText().trim();
                         ilanDetaylari.put(key, value);
                     }
 
+                    String ilanKlasorPath = "/Users/mirhanuyar/Desktop/homele/adverts/" + ilanId;
+                    Files.createDirectories(Paths.get(ilanKlasorPath));
                     System.out.println("Fotoğraflar indiriliyor...");
-                    downloadSliderImages(driver, "item.mx-2.slick-slide.slick-current.slick-active.slick-center", "/Users/mirhanuyar/Desktop/homele/Büyük", wait, ilanTitle);
-                    downloadSliderImages(driver, "property-slider-nav\"", "/Users/mirhanuyar/Desktop/homele/Küçük", wait, ilanTitle);
+                    downloadSliderImages(driver, "item.mx-2.slick-slide.slick-current.slick-active.slick-center", ilanKlasorPath, wait, ilanTitle);
+
+                    String agentFolderPath = "/Users/mirhanuyar/Desktop/homele/agency/" + agencyId;
+                    Files.createDirectories(Paths.get(agentFolderPath));
+
+                    WebElement agentPhotoElement = wait.until(ExpectedConditions.visibilityOfElementLocated(By.xpath("//div[contains(@class, 'agent-photo col-auto')]/img")));
+                    String agentPhotoUrl = agentPhotoElement.getAttribute("src");
+                    downloadImage(agentPhotoUrl, agentFolderPath, "agent_" + agentId + ".jpg");
+
+                    WebElement agencyLogoElement = driver.findElement(By.cssSelector(".agency-logo img"));
+                    String agencyLogoUrl = agencyLogoElement.getAttribute("src");
+                    downloadImage(agencyLogoUrl, agentFolderPath, "agency_" + agencyId + ".jpg");
+
+                    System.out.println("Ajans logosu indirildi: " + agencyLogoUrl);
+
+                    String agencyDetailUrl = "https://homele.com/tr/agency-detail/" + ilanId;
+                    ilanDetaylari.put("agency_detail_url", agencyDetailUrl);
+
+                    Gson gson = new Gson();
+                    try (FileWriter advertWriter = new FileWriter(ilanKlasorPath + "/advert_details.json")) {
+                        gson.toJson(ilanDetaylari, advertWriter);
+                        System.out.println("Advert JSON dosyası yazıldı: " + ilanKlasorPath + "/advert_details.json");
+                    }
+
+                    try (FileWriter agentWriter = new FileWriter(agentFolderPath + "/agent_details.json")) {
+                        gson.toJson(ilanDetaylari, agentWriter);
+                        System.out.println("Agent JSON dosyası yazıldı: " + agentFolderPath + "/agent_details.json");
+                    }
+
+                    try {
+                        WebElement contactInfoSection = driver.findElement(By.cssSelector(".agent-contact-info.rtl.col.d-flex.justify-content-center.flex-column"));
+                        WebElement contactLink = contactInfoSection.findElement(By.tagName("a")); // Bu sınıfın altındaki ilk linki buluyoruz
+                        String contactLinkUrl = contactLink.getAttribute("href");
+                        System.out.println("Agent Contact Link: " + contactLinkUrl);
+
+                        driver.get(contactLinkUrl);
+                        System.out.println("Linke yönlendirildi: " + contactLinkUrl);
+
+                        WebElement yeniSayfaBasligi = wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".new-title")));
+                        String yeniBaslik = yeniSayfaBasligi.getText();
+                        System.out.println("Yeni sayfa başlığı: " + yeniBaslik);
+
+                    } catch (Exception e) {
+                        System.out.println("'agent-contact-info' altında link bulunamadı: " + e.getMessage());
+                    }
 
                     System.out.println("İlan Detayları:");
                     for (Map.Entry<String, String> entry : ilanDetaylari.entrySet()) {
@@ -78,6 +144,7 @@ public class Homele1 {
 
                 } catch (Exception e) {
                     System.out.println("Bilgiler alınamadı: " + e.getMessage());
+                    e.printStackTrace();
                 }
 
                 driver.close();
@@ -91,40 +158,26 @@ public class Homele1 {
     }
 
     public static void downloadSliderImages(WebDriver driver, String sliderClass, String downloadBasePath, WebDriverWait wait, String ilanTitle) {
-        Set<String> downloadedImages = new HashSet<>(); // Benzersiz fotoğraf URL'lerini saklamak için
+        Set<String> downloadedImages = new HashSet<>();
         boolean hasNextImage = true;
         int imageCount = 1;
 
-        // Her ilan için başlığa göre bir klasör oluştur
-        String ilanFolderPath = downloadBasePath + File.separator + formatFileName(ilanTitle);
-        try {
-            Files.createDirectories(Paths.get(ilanFolderPath));
-            System.out.println("Klasör oluşturuldu: " + ilanFolderPath);
-        } catch (IOException e) {
-            System.out.println("Klasör oluşturulamadı: " + e.getMessage());
-            return;
-        }
-
         while (hasNextImage) {
             try {
-                // Şu anki resmi bul
                 WebElement currentImage = wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("." + sliderClass + " img")));
                 String imageUrl = currentImage.getAttribute("src");
 
-                // Eğer URL daha önce indirildiyse döngüyü sonlandır
                 if (downloadedImages.contains(imageUrl)) {
                     hasNextImage = false;
                     System.out.println("Son fotoğrafa ulaşıldı.");
                     break;
                 }
 
-                // Fotoğrafı indir ve URL'yi listeye ekle
                 downloadedImages.add(imageUrl);
                 String fileName = "image_" + imageCount + ".jpg";
-                downloadImage(imageUrl, ilanFolderPath, fileName); // Her ilanın klasörüne indir
+                downloadImage(imageUrl, downloadBasePath, fileName);
                 imageCount++;
 
-                // 'Next' butonuna tıkla, bir sonraki fotoğrafa geç
                 WebElement nextButton = driver.findElement(By.cssSelector(".slick-next"));
                 if (nextButton.isEnabled()) {
                     wait.until(ExpectedConditions.elementToBeClickable(nextButton)).click();
@@ -138,10 +191,6 @@ public class Homele1 {
                 hasNextImage = false;
             }
         }
-    }
-
-    public static String formatFileName(String title) {
-        return title.replaceAll("[\\\\/:*?\"<>|]", "_").replaceAll("\\s+", "_");
     }
 
     public static void downloadImage(String imageUrl, String downloadPath, String fileName) {
