@@ -1,4 +1,4 @@
-package lesson3;
+package lesson1.lesson3;
 
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.chrome.ChromeDriver;

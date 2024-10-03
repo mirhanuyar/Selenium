@@ -1,4 +1,4 @@
-package lesson4;
+package lesson1.lesson4;
 
 import org.openqa.selenium.Dimension;
 import org.openqa.selenium.Point;
