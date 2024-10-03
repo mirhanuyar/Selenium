@@ -1,12 +1,15 @@
 package homele;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class Agent {
     private String id;
     private String name;
     private String photoUrl;
-    private String email;
-    private String languages;
-    private String phoneNumber;
+    private List<String> languages = new ArrayList<>();
+    private List<String> phoneNumbers = new ArrayList<>();
+    private List<String> emails = new ArrayList<>();
 
     public String getId() {
         return id;
@@ -32,27 +35,27 @@ public class Agent {
         this.photoUrl = photoUrl;
     }
 
-    public String getEmail() {
-        return email;
-    }
-
-    public void setEmail(String email) {
-        this.email = email;
-    }
-
-    public String getLanguages() {
+    public List<String> getLanguages() {
         return languages;
     }
 
-    public void setLanguages(String languages) {
+    public void setLanguages(List<String> languages) {
         this.languages = languages;
     }
 
-    public String getPhoneNumber() {
-        return phoneNumber;
+    public List<String> getPhoneNumbers() {
+        return phoneNumbers;
     }
 
-    public void setPhoneNumber(String phoneNumber) {
-        this.phoneNumber = phoneNumber;
+    public void setPhoneNumbers(List<String> phoneNumbers) {
+        this.phoneNumbers = phoneNumbers;
+    }
+
+    public List<String> getEmails() {
+        return emails;
+    }
+
+    public void setEmails(List<String> emails) {
+        this.emails = emails;
     }
 }
