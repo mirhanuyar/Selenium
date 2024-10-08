@@ -1,6 +1,7 @@
 package homele;
 
 import com.google.gson.Gson;
+import homele2.ImageDownloader;
 import org.apache.commons.io.FileUtils;
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
@@ -14,79 +15,146 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.lang.reflect.Type;
-import java.time.Duration;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 
 public class Manager {
     static Gson gson = new Gson();
     static String AGENCY_FILE_PATH = "/Users/mirhanuyar/Desktop/work/agency/__AGENCY_ID__";
     static String ADVERT_FILE_PATH = "/Users/mirhanuyar/Desktop/work/advert/__ADVERT_ID__";
+    static String FILE_PATH = "/Users/mirhanuyar/Desktop/list.txt";
 
     private static WebDriver driver;
     private static WebDriverWait wait;
     
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException {
         System.setProperty("webdriver.chrome.driver.driver", "/Users/mirhanuyar/Desktop/seleniumProject/selenium-java-4.25.0//chromedriver");
 
         driver = new ChromeDriver();
-        wait = new WebDriverWait(driver, Duration.ofSeconds(50));
 
-        String baseUrl = "https://homele.com/tr/properties?page=";
-        int pageNumber = 1;
-        boolean hasNextPage = true;
+        List<String> fileContent = new ArrayList<>(Files.readAllLines(Path.of(FILE_PATH), StandardCharsets.UTF_8));
 
-        while (hasNextPage) {
-            driver.get(baseUrl + pageNumber);
-            List<WebElement> ilanlar = driver.findElements(By.xpath("//a[contains(@class, 'property-image')]"));
-            String lastTab = getLastTabId();
-            if (ilanlar.isEmpty()) {
-                System.out.println("Son sayfaya ulaşıldı.");
-                hasNextPage = false;
-                break;
-            }
-
-            for (WebElement ilan : ilanlar) {
-                String ilanUrl = ilan.getAttribute("href");
-                createAdvert(ilanUrl);
-                driver.switchTo().window(lastTab);
-            }
-
-            pageNumber++;
+        for (int i = 0; i < fileContent.size(); i++) {
+            String ilanUrl = fileContent.get(i);
             try {
-                Thread.sleep(3000);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+                if (ilanUrl.contains("__DONE__")) {
+                    continue;
+                }
+                boolean result = createAdvert(ilanUrl);
+                if (result) {
+                    fileContent.set(i, ilanUrl + " __DONE__");
+                } else {
+                    fileContent.set(i, ilanUrl + " __DONE__ __ERRORED__");
+                }
+                Files.write(Path.of(FILE_PATH), fileContent, StandardCharsets.UTF_8);
+                try {
+                    Thread.sleep(3000);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                fileContent.set(i, ilanUrl + " __DONE__ __ERRORED__");
+                Files.write(Path.of(FILE_PATH), fileContent, StandardCharsets.UTF_8);
             }
         }
+
     }
 
-    public static void createAdvert(String ilanUrl) {
-        ((JavascriptExecutor) driver).executeScript("window.open(arguments[0]);", ilanUrl);
+    public static boolean createAdvert(String ilanUrl) {
+        driver.get(ilanUrl);
         String lastTab = getLastTabId();
-        driver.switchTo().window(lastTab);
 
         try {
             String ilanId = ilanUrl.substring(ilanUrl.lastIndexOf('/') + 1);
+            String advertPath = ADVERT_FILE_PATH.replace("__ADVERT_ID__", ilanId);
             System.out.println("Ilan ID: " + ilanId);
+            try (FileReader reader = new FileReader(advertPath + "/details.json")) {
+                Agency agency = createAgencyIfNeeded();
+                if (agency == null) {
 
-            // todo: aşağıdaki fonksiyonu çağırmadan önce, advert bilgilerini oku ve oluştur
+                }
+                driver.switchTo().window(lastTab);
+                return true;
+            } catch (Exception e) {
+
+            }
+
+
+            Map<String, String> keyValues = new HashMap<>();
+
+            readSpanPairs(keyValues, ".list-group-flush.list-group.list-key-value > li");
+            readSpanPairs(keyValues, ".amenities-container .rooms .col .content > div > div");
+            readSpanPairs(keyValues, ".amenities-container .features .col .content > div > div");
+
+            WebElement element = driver.findElement(By.cssSelector(".section-overview"));
+            if (element != null) {
+                String description = element.getText().trim();
+                keyValues.put("description", description);
+            }
+            element = driver.findElement(By.cssSelector(".map-image"));
+            if (element != null) {
+                String latitude = element.getDomAttribute("data-latitude");
+                String longitude = element.getDomAttribute("data-longitude");
+                keyValues.put("latitude", latitude);
+                keyValues.put("longitude", longitude);
+            }
+
+            keyValues.put("advertId", ilanId);
+
+            String category = getFromScript("category");
+            keyValues.put("category", category);
+
+            String advertTitle = getFromScript("item_name");
+            keyValues.put("advertTitle", advertTitle);
+
+            String agencyId = getFromScript("agency_id");
+            keyValues.put("agencyId", agencyId);
+
+            String agentId = getFromScript("agent_id");
+            keyValues.put("agentId", agentId);
+
+            String priceInUsd = getFromScript("price_in_usd");
+            keyValues.put("priceInUsd", priceInUsd);
+
+            String city = getFromScript("city");
+            keyValues.put("city", city);
+
+            String area = getFromScript("area");
+            keyValues.put("area", area);
+
+            String propertyType = getFromScript("property_type");
+            keyValues.put("propertyType", propertyType);
+
+            writeAdvert(keyValues, advertPath + "/details.json");
+            ImageDownloader.downloadSliderImages(driver, advertPath);
 
 
             Agency agency = createAgencyIfNeeded();
 
             driver.switchTo().window(lastTab);
-            driver.close();
+
+            return true;
 
         } catch (Exception e) {
             e.printStackTrace();
         }
+
+        return false;
     }
 
 
     public static Agency createAgencyIfNeeded() {
         String agencyId = getFromScript("agency_id");
+        if (agencyId == null) {
+            return null;
+        }
         String agencyPath = AGENCY_FILE_PATH.replace("__AGENCY_ID__", agencyId);
         String detailsPath = agencyPath + "/details.json";
         Agency agency = readAgency(detailsPath);
@@ -108,26 +176,28 @@ public class Manager {
         WebElement agencyNameElement = driver.findElement(By.xpath("//h2[@class='h4']"));
         String agencyName = agencyNameElement.getText().trim();
 
-        WebElement logoElement = driver.findElement(By.xpath("//img[@class='img-fluid p-3']"));
-        String logoUrl = logoElement.getAttribute("src");
-
-        List<WebElement> contactDiv = driver.findElements(By.cssSelector(".btn-contacts > div > a"));
+        List<String> phones = tryReadPhones2();
+        if (phones == null) {
+            phones = tryReadPhones1();
+        }
+        agency.setPhoneNumbers(phones);
 
         List<String> emails = new ArrayList<String>();
-        List<String> phones = new ArrayList<String>();
+        List<WebElement> contactDiv = driver.findElements(By.cssSelector(".btn-contacts > div > a"));
         for (WebElement element : contactDiv) {
-            if (element.getAttribute("onclick").contains("call")) {
-                phones.add(element.getDomAttribute("href").replace("tel:", ""));
-            } else {
+            if (element.getAttribute("onclick") != null && element.getDomAttribute("href").contains("mailto")) {
                 String mailto = element.getDomAttribute("href");
                 String mail = mailto.substring(0, mailto.indexOf("?")).replace("mailto:", "");
                 emails.add(mail);
             }
         }
 
+        String fileName = "agency_" + agencyId + ".jpg";
+        String imageUrl = ImageDownloader.downloadImageInElement(driver, agencyPath, fileName, ".image-section > div > img");
+        agency.setLogoUrl(imageUrl);
+
         agency.setId(agencyId);
         agency.setName(agencyName);
-        agency.setLogoUrl(logoUrl);
         agency.setPhoneNumbers(phones);
         agency.setEmails(emails);
 
@@ -139,7 +209,8 @@ public class Manager {
         }
 
         for (String agentUrl : agentUrls) {
-            yeniAgentEkle(agency, agencyPath, agentUrl);
+            Agent agent = createNewAgent(agencyPath, agentUrl);
+            agency.getAgents().add(agent);
             driver.switchTo().window(lastTab);
         }
 
@@ -150,16 +221,16 @@ public class Manager {
         return agency;
     }
 
-    public static void yeniAgentEkle(Agency agency, String agencyPath, String agentUrl) {
-
+    public static Agent createNewAgent(String agencyPath, String agentUrl) {
         ((JavascriptExecutor) driver).executeScript("window.open(arguments[0]);", agentUrl);
         driver.switchTo().window(getLastTabId());
         Agent agent = new Agent();
 
-        List<WebElement> phones = driver.findElements(By.cssSelector(".btn-contacts .dropdown .dropdown-menu a"));
-        for (WebElement phone : phones) {
-            agent.getPhoneNumbers().add(phone.getText());
+        List<String> phones = tryReadPhones2();
+        if (phones == null) {
+            phones = tryReadPhones1();
         }
+        agent.setPhoneNumbers(phones);
 
         List<WebElement> details = driver.findElements(By.cssSelector(".agency-stats > div"));
         for (WebElement detail : details) {
@@ -173,16 +244,30 @@ public class Manager {
         String agentId = agentUrl.substring(agentUrl.lastIndexOf('/') + 1);
 
         agent.setId(agentId);
-        agent.setName("İsmail Şahin");
-        agent.setPhotoUrl(agencyPath + "/agent_" + agentId);
-        agency.getAgents().add(agent);
+
+        WebElement webElement = driver.findElement(By.cssSelector(".agency-name > h2"));
+        agent.setName(webElement.getText());
+
+        String fileName = "agent_" + agentId + ".jpg";
+        String imageUrl = ImageDownloader.downloadImageInElement(driver, agencyPath, fileName, ".image-section > div > img");
+        agent.setPhotoUrl(imageUrl);
 
         driver.close();
+
+        return agent;
     }
 
     public static void writeAgency(Agency agency, final String path) {
-
         String json = gson.toJson(agency);
+        try {
+            FileUtils.writeStringToFile(new File(path), json, true);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static void writeAdvert(Map<String, String> advert, final String path) {
+        String json = gson.toJson(advert);
         try {
             FileUtils.writeStringToFile(new File(path), json, true);
         } catch (IOException e) {
@@ -201,9 +286,14 @@ public class Manager {
 
 
     private static String getFromScript(String key) {
-        WebElement agencyScriptElement = driver.findElement(By.xpath("//script[contains(text(), '" + key + "')]"));
-        String scriptContent = agencyScriptElement.getAttribute("innerHTML");
-        return scriptContent.split("'" + key+ "': '")[1].split("'")[0];
+        try {
+            WebElement agencyScriptElement = driver.findElement(By.xpath("//script[contains(text(), '" + key + "')]"));
+            String scriptContent = agencyScriptElement.getAttribute("innerHTML");
+            return scriptContent.split("'" + key+ "': '")[1].split("'")[0];
+        } catch (Exception e) {
+            return null;
+        }
+
     }
 
     public static String getLastTabId() {
@@ -211,15 +301,52 @@ public class Manager {
         return list.get(list.size() - 1);
     }
 
-    /*
-    private static void scrapeAndSaveDetails(Map<String, String> ilanDetaylari, Map<String, String> agentDetaylari, String ilanId, String ilanTitle) {
-        String ilanKlasorPath = "/Users/mirhanuyar/Desktop/homele/adverts/" + ilanId;
-        Json.createDirectory(ilanKlasorPath);
-        ImageDownloader.downloadSliderImages(driver, "item.mx-2.slick-slide.slick-current.slick-active.slick-center", ilanKlasorPath, wait, ilanTitle);
+    private static List<String> tryReadPhones1() {
+        try {
+            List<WebElement> contactDiv = driver.findElements(By.cssSelector(".btn-contacts > div > a"));
 
-        Json.writeJsonToFile(ilanDetaylari, ilanKlasorPath + "/" + ilanId + "_advert_details.json");
+            List<String> phones = new ArrayList<String>();
+            for (WebElement element : contactDiv) {
+                if (element.getAttribute("onclick") != null && element.getDomAttribute("href").contains("tel")) {
+                    phones.add(element.getDomAttribute("href").replace("tel:", ""));
+                }
+            }
+            return phones;
+        } catch (Exception e) {
+            return null;
+        }
+    }
 
-        Agent agent = new Agent(driver, wait);
-        agent.scrapeAgentDetails(ilanDetaylari, agentDetaylari, ilanId);
-    }*/
+    private static List<String> tryReadPhones2() {
+        try {
+            List<String> phones = new ArrayList<String>();
+            List<WebElement> elements = driver.findElements(By.cssSelector(".btn-contacts .dropdown .dropdown-menu a"));
+            for (WebElement phone : elements) {
+                phones.add(phone.getText());
+            }
+            return phones;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static void readSpanPairs(Map<String, String> keyValues, String cssSelector) {
+        try {
+            List<WebElement> elements = driver.findElements(By.cssSelector(cssSelector));
+            for (WebElement element : elements) {
+                try {
+                    List<WebElement> spans = element.findElements(By.xpath(".//span"));
+                    if (spans.size() == 2) {
+                        String key = spans.get(0).getText().trim();
+                        String value = spans.get(1).getText().trim();
+                        keyValues.put(key, value);
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 }
